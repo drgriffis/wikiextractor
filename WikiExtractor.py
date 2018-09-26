@@ -210,7 +210,7 @@ filter_disambig_page_pattern = re.compile("{{disambig(uation)?(\|[^}]*)?}}")
 
 ##
 # page filtering logic -- remove templates, undesired xml namespaces, and disambiguation pages
-def keepPage(ns, page):
+def keepPage(ns, page, title):
     if ns != '0':               # Aritcle
         return False
     # remove disambig pages if desired
@@ -218,7 +218,17 @@ def keepPage(ns, page):
         for line in page:
             if filter_disambig_page_pattern.match(line):
                 return False
+    # check if filtering to specific list of pages
+    if options.restrict_pages_to and (not title in options.restrict_pages_to):
+        return False
     return True
+
+def readRestrictedPageIDSet(f):
+    id_set = set()
+    with codecs.open(f, 'r', 'utf-8') as stream:
+        for line in stream:
+            id_set.add(line.strip().replace('_', ' '))
+    return id_set
 
 
 def get_url(uid):
@@ -2939,7 +2949,7 @@ def process_dump(input_file, template_file, out_file, file_size, file_compress,
     page_num = 0
     for page_data in pages_from(input):
         id, revid, title, ns, page = page_data
-        if keepPage(ns, page):
+        if keepPage(ns, page, title):
             # slow down
             delay = 0
             if spool_length.value > max_spool_length:
@@ -3128,6 +3138,8 @@ def main():
     default_process_count = max(1, cpu_count() - 1)
     parser.add_argument("--processes", type=int, default=default_process_count,
                         help="Number of processes to use (default %(default)s)")
+    groupP.add_argument("--restrict_pages_to", default=None,
+                        help="List of page IDs to restrict to (one per line, case-sensitive)")
 
     groupS = parser.add_argument_group('Special')
     groupS.add_argument("-q", "--quiet", action="store_true",
@@ -3155,6 +3167,11 @@ def main():
     options.expand_templates = args.no_templates
     options.filter_disambig_pages = args.filter_disambig_pages
     options.keep_tables = args.keep_tables
+
+    if args.restrict_pages_to:
+        options.restrict_pages_to = readRestrictedPageIDSet(args.restrict_pages_to)
+    else:
+        options.restrict_pages_to = None
 
     try:
         power = 'kmg'.find(args.bytes[-1].lower()) + 1
